@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const puppeteer = require('puppeteer');
+const fetch = require('node-fetch'); // For ScrapingBee REST
 
 const app = express();
 app.use(bodyParser.json());
@@ -30,16 +31,26 @@ app.post('/webhook', async (req, res) => {
 
   try {
     const apiKey = process.env.SCRAPINGBEE_API_KEY;
-    const sessionId = Date.now();
-    const endpoint = `wss://pool.scrapingbee.com?api_key=${apiKey}&session_id=${sessionId}&stealth=true&headless=true&render_js=true`;
-    console.log('CONNECTING TO SCRAPINGBEE...');
+    const url = 'https://www.posusa.com/compare/pos/';
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      url: url,
+      render_js: 'true',
+      premium_proxy: 'true',
+      country_code: 'us'
+    });
 
-    const browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
+    console.log('FETCHING PAGE WITH SCRAPINGBEE...');
+    const response = await fetch(`https://app.scrapingbee.com/api/v1/?${params}`);
+    if (!response.ok) throw new Error(`ScrapingBee failed: ${response.status}`);
+
+    const html = await response.text();
+    console.log('PAGE FETCHED');
+
+    const browser = await puppeteer.launch({ headless: 'new' });
     const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-
-    await page.goto('https://www.posusa.com/compare/pos/', { waitUntil: 'networkidle2', timeout: 30000 });
-    console.log('PAGE LOADED');
 
     // === 1. INDUSTRY ===
     const ind = payload.industry.toLowerCase();
@@ -83,6 +94,7 @@ app.post('/webhook', async (req, res) => {
                 ? '//label[contains(text(),"Hotel, Events, or Venues")]'
                 : '//label[contains(text(),"Other")]';
     }
+    await page.waitForXPath(compXPath, { timeout: 10000 });
     await (await page.$x(compXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
@@ -93,6 +105,7 @@ app.post('/webhook', async (req, res) => {
                     : payload.terminals === '2' ? '//label[contains(text(),"2") and not(contains(text(),"-"))]'
                     : payload.terminals === '3-5' ? '//label[contains(text(),"3-5")]'
                     : '//label[contains(text(),"Over 5")]';
+    await page.waitForXPath(termXPath, { timeout: 10000 });
     await (await page.$x(termXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
@@ -105,7 +118,8 @@ app.post('/webhook', async (req, res) => {
                    : payload.monthly_revenue.includes('$80,000 - $120,000') ? '//label[contains(text(),"$80,000 - $120,000")]'
                    : payload.monthly_revenue.includes('More than $120,000') ? '//label[contains(text(),"More than $120,000")]'
                    : '//label[contains(text(),"Unknown / Not sure")]';
-    await (await page.$x(revXPath))[0].click();
+    await page.waitForXPath(revXPath, { timeout: 10000 });
+    await (await page.$x(revXPpath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
 
@@ -114,6 +128,7 @@ app.post('/webhook', async (req, res) => {
     const timelineXPath = payload.timeline.includes('1-3 Months') ? '//label[contains(text(),"1-3 Months")]'
                         : payload.timeline.includes('4-6 Months') ? '//label[contains(text(),"4-6 Months")]'
                         : '//label[contains(text(),"ASAP")]';
+    await page.waitForXPath(timelineXPath, { timeout: 10000 });
     await (await page.$x(timelineXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
@@ -129,6 +144,7 @@ app.post('/webhook', async (req, res) => {
     const demoXPath = payload.demo.includes('Maybe') ? '//label[contains(text(),"Maybe")]'
                     : payload.demo.includes('No') ? '//label[contains(text(),"No")]'
                     : '//label[contains(text(),"Yes")]';
+    await page.waitForXPath(demoXPath, { timeout: 10000 });
     await (await page.$x(demoXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
@@ -167,4 +183,4 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('SCRAPINGBEE BOT LIVE'));
+app.listen(process.env.PORT || 3000, () => console.log('BOT LIVE'));
