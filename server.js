@@ -29,8 +29,9 @@ app.post('/webhook', async (req, res) => {
 
   console.log('MAPPED LEAD:', payload);
 
+  let browser;
   try {
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath(),
@@ -41,7 +42,6 @@ app.post('/webhook', async (req, res) => {
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
 
-    // === LOAD PAGE WITH 60s TIMEOUT (PUPPETEER STYLE) ===
     await page.goto('https://www.posusa.com/compare/pos/', { 
       waitUntil: 'networkidle2', 
       timeout: 60000 
