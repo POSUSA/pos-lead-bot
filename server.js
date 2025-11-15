@@ -29,8 +29,9 @@ app.post('/webhook', async (req, res) => {
 
   console.log('MAPPED LEAD:', payload);
 
+  let browser;
   try {
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
       executablePath: await chromium.executablePath(),
@@ -41,7 +42,12 @@ app.post('/webhook', async (req, res) => {
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
 
-    await page.goto('https://www.posusa.com/compare/pos/', { waitUntil: 'networkidle2', timeout: 30000 });
+    // === LOAD PAGE WITH 60s TIMEOUT ===
+    await page.goto('https://www.posusa.com/compare/pos/', { 
+      waitUntil: 'networkidle2', 
+      timeout: 60000 
+    });
+    await page.waitForLoadState('networkidle');
     console.log('PAGE LOADED');
 
     // === 1. INDUSTRY ===
@@ -49,10 +55,11 @@ app.post('/webhook', async (req, res) => {
     const indXPath = ind.includes('retail') ? '//div[contains(text(),"Retail")]'
                    : ind.includes('food') || ind.includes('drink') ? '//div[contains(text(),"Food & Drink")]'
                    : '//div[contains(text(),"Other")]';
-    await page.waitForXPath(indXPath, { timeout: 10000 });
+    await page.waitForXPath(indXPath, { timeout: 15000 });
     await (await page.$x(indXPath))[0].click();
     await page.click('//button[contains(text(),"Compare Quotes")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('INDUSTRY DONE');
 
     // === 2. COMPANY TYPE ===
     let compXPath = '//label[contains(text(),"Other")]';
@@ -86,10 +93,11 @@ app.post('/webhook', async (req, res) => {
                 ? '//label[contains(text(),"Hotel, Events, or Venues")]'
                 : '//label[contains(text(),"Other")]';
     }
-    await page.waitForXPath(compXPath, { timeout: 10000 });
+    await page.waitForXPath(compXPath, { timeout: 15000 });
     await (await page.$x(compXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('COMPANY TYPE DONE');
 
     // === 3. TERMINALS ===
     await page.waitForXPath('//div[contains(text(),"How many terminals do you require?")]');
@@ -97,10 +105,11 @@ app.post('/webhook', async (req, res) => {
                     : payload.terminals === '2' ? '//label[contains(text(),"2") and not(contains(text(),"-"))]'
                     : payload.terminals === '3-5' ? '//label[contains(text(),"3-5")]'
                     : '//label[contains(text(),"Over 5")]';
-    await page.waitForXPath(termXPath, { timeout: 10000 });
+    await page.waitForXPath(termXPath, { timeout: 15000 });
     await (await page.$x(termXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('TERMINALS DONE');
 
     // === 4. REVENUE ===
     await page.waitForXPath('//div[contains(text(),"What is your average monthly revenue?")]');
@@ -110,67 +119,76 @@ app.post('/webhook', async (req, res) => {
                    : payload.monthly_revenue.includes('$80,000 - $120,000') ? '//label[contains(text(),"$80,000 - $120,000")]'
                    : payload.monthly_revenue.includes('More than $120,000') ? '//label[contains(text(),"More than $120,000")]'
                    : '//label[contains(text(),"Unknown / Not sure")]';
-    await page.waitForXPath(revXPath, { timeout: 10000 });
+    await page.waitForXPath(revXPath, { timeout: 15000 });
     await (await page.$x(revXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('REVENUE DONE');
 
     // === 5. TIMELINE ===
     await page.waitForXPath('//div[contains(text(),"When do you need your new POS system?")]');
     const timelineXPath = payload.timeline.includes('1-3 Months') ? '//label[contains(text(),"1-3 Months")]'
                         : payload.timeline.includes('4-6 Months') ? '//label[contains(text(),"4-6 Months")]'
                         : '//label[contains(text(),"ASAP")]';
-    await page.waitForXPath(timelineXPath, { timeout: 10000 });
+    await page.waitForXPath(timelineXPath, { timeout: 15000 });
     await (await page.$x(timelineXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('TIMELINE DONE');
 
     // === 6. CREDIT CARD ===
     await page.waitForXPath('//div[contains(text(),"Are you also interested in credit card processing?")]');
     await page.click(payload.credit_card === 'Yes' ? '//label[contains(text(),"Yes")]' : '//label[contains(text(),"No")]');
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('CREDIT CARD DONE');
 
     // === 7. DEMO ===
     await page.waitForXPath('//div[contains(text(),"Would you be interested in a free demo?")]');
     const demoXPath = payload.demo.includes('Maybe') ? '//label[contains(text(),"Maybe")]'
                     : payload.demo.includes('No') ? '//label[contains(text(),"No")]'
                     : '//label[contains(text(),"Yes")]';
-    await page.waitForXPath(demoXPath, { timeout: 10000 });
+    await page.waitForXPath(demoXPath, { timeout: 15000 });
     await (await page.$x(demoXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('DEMO DONE');
 
     // === 8. ZIP ===
     await page.waitForXPath('//div[contains(text(),"What\'s your ZIP code?")]');
     await page.type('input[placeholder*="90210"]', payload.zip);
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('ZIP DONE');
 
     // === 9. EMAIL ===
     await page.waitForXPath('//div[contains(text(),"Almost there")]');
     await page.type('input[placeholder*="Your email address"]', payload.email);
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('EMAIL DONE');
 
     // === 10. NAME + COMPANY ===
     await page.waitForXPath('//div[contains(text(),"Only two steps left")]');
     await page.type('input[placeholder*="First Last"]', payload.name);
     await page.type('input[placeholder*="Your company name"]', payload.company);
     await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+    console.log('NAME/COMPANY DONE');
 
     // === 11. PHONE ===
     await page.waitForXPath('//div[contains(text(),"This is the last page of questions")]');
     await page.type('input[placeholder*="Your phone number"]', payload.phone);
     await page.click('//button[contains(text(),"Compare Quotes")]');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
     await page.screenshot({ path: 'debug-submitted.png' });
+    console.log('SCREENSHOT SAVED');
 
     await browser.close();
     res.json({ success: true, message: 'LEAD SUBMITTED!' });
   } catch (err) {
     console.error('ERROR:', err.message);
+    if (browser) await browser.close().catch(() => {});
     res.status(500).json({ error: err.message });
   }
 });
