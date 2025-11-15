@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 
 const app = express();
 app.use(bodyParser.json());
@@ -29,14 +30,17 @@ app.post('/webhook', async (req, res) => {
   console.log('MAPPED LEAD:', payload);
 
   try {
+    // === VERCEL-COMPATIBLE BROWSER LAUNCH ===
     const browser = await puppeteer.launch({
-      headless: 'new',
-      executablePath: process.env.PUPPETEER_EXEC_PATH || '/tmp/chrome/chrome',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+      ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     await page.goto('https://www.posusa.com/compare/pos/', { waitUntil: 'networkidle2', timeout: 30000 });
     console.log('PAGE LOADED');
@@ -50,6 +54,7 @@ app.post('/webhook', async (req, res) => {
     await (await page.$x(indXPath))[0].click();
     await page.click('//button[contains(text(),"Compare Quotes")]');
     await page.waitForTimeout(2000);
+    console.log('INDUSTRY DONE');
 
     // === 2. COMPANY TYPE ===
     let compXPath = '//label[contains(text(),"Other")]';
@@ -87,6 +92,7 @@ app.post('/webhook', async (req, res) => {
     await (await page.$x(compXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('COMPANY TYPE DONE');
 
     // === 3. TERMINALS ===
     await page.waitForXPath('//div[contains(text(),"How many terminals do you require?")]');
@@ -98,6 +104,7 @@ app.post('/webhook', async (req, res) => {
     await (await page.$x(termXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('TERMINALS DONE');
 
     // === 4. REVENUE ===
     await page.waitForXPath('//div[contains(text(),"What is your average monthly revenue?")]');
@@ -111,6 +118,7 @@ app.post('/webhook', async (req, res) => {
     await (await page.$x(revXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('REVENUE DONE');
 
     // === 5. TIMELINE ===
     await page.waitForXPath('//div[contains(text(),"When do you need your new POS system?")]');
@@ -121,12 +129,14 @@ app.post('/webhook', async (req, res) => {
     await (await page.$x(timelineXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('TIMELINE DONE');
 
     // === 6. CREDIT CARD ===
     await page.waitForXPath('//div[contains(text(),"Are you also interested in credit card processing?")]');
     await page.click(payload.credit_card === 'Yes' ? '//label[contains(text(),"Yes")]' : '//label[contains(text(),"No")]');
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('CREDIT CARD DONE');
 
     // === 7. DEMO ===
     await page.waitForXPath('//div[contains(text(),"Would you be interested in a free demo?")]');
@@ -137,18 +147,21 @@ app.post('/webhook', async (req, res) => {
     await (await page.$x(demoXPath))[0].click();
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('DEMO DONE');
 
     // === 8. ZIP ===
     await page.waitForXPath('//div[contains(text(),"What\'s your ZIP code?")]');
     await page.type('input[placeholder*="90210"]', payload.zip);
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('ZIP DONE');
 
     // === 9. EMAIL ===
     await page.waitForXPath('//div[contains(text(),"Almost there")]');
     await page.type('input[placeholder*="Your email address"]', payload.email);
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('EMAIL DONE');
 
     // === 10. NAME + COMPANY ===
     await page.waitForXPath('//div[contains(text(),"Only two steps left")]');
@@ -156,6 +169,7 @@ app.post('/webhook', async (req, res) => {
     await page.type('input[placeholder*="Your company name"]', payload.company);
     await page.click('//button[contains(text(),"Continue")]');
     await page.waitForTimeout(2000);
+    console.log('NAME/COMPANY DONE');
 
     // === 11. PHONE ===
     await page.waitForXPath('//div[contains(text(),"This is the last page of questions")]');
@@ -163,6 +177,7 @@ app.post('/webhook', async (req, res) => {
     await page.click('//button[contains(text(),"Compare Quotes")]');
     await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
     await page.screenshot({ path: 'debug-submitted.png' });
+    console.log('SCREENSHOT SAVED');
 
     await browser.close();
     res.json({ success: true, message: 'LEAD SUBMITTED!' });
