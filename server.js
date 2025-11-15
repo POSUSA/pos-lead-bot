@@ -29,28 +29,30 @@ app.post('/webhook', async (req, res) => {
 
   console.log('MAPPED LEAD:', payload);
 
-  try {
-    const apiKey = process.env.SCRAPINGBEE_API_KEY;
-    const url = 'https://www.posusa.com/compare/pos/';
-    const params = new URLSearchParams({
-      api_key: apiKey,
-      url: url,
-      render_js: 'true',
-      premium_proxy: 'true',
-      country_code: 'us'
-    });
+  // === REPLACE THIS ENTIRE BLOCK ===
+try {
+  const apiKey = process.env.SCRAPINGBEE_API_KEY;
+  const url = 'https://www.posusa.com/compare/pos/';
+  const params = new URLSearchParams({
+    api_key: apiKey,
+    url: url,
+    render_js: 'true',
+    premium_proxy: 'true',
+    country_code: 'us'
+  });
 
-    console.log('FETCHING PAGE WITH SCRAPINGBEE...');
-    const response = await fetch(`https://app.scrapingbee.com/api/v1/?${params}`);
-    if (!response.ok) throw new Error(`ScrapingBee failed: ${response.status}`);
+  console.log('FETCHING PAGE WITH SCRAPINGBEE...');
+  const response = await fetch(`https://app.scrapingbee.com/api/v1/?${params}`);
+  if (!response.ok) throw new Error(`ScrapingBee failed: ${response.status}`);
 
-    const html = await response.text();
-    console.log('PAGE FETCHED');
+  const html = await response.text();
+  console.log('PAGE FETCHED');
 
-    const browser = await puppeteer.launch({ headless: 'new' });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+  const browser = await puppeteer.launch({ headless: 'new' });
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: 'networkidle0' });
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+  // ... rest of bot
 
     // === 1. INDUSTRY ===
     const ind = payload.industry.toLowerCase();
