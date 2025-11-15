@@ -28,23 +28,23 @@ app.post('/webhook', async (req, res) => {
   
   console.log('MAPPED LEAD:', payload);
   
-  // Browserless function code
+  // Create the function as a string WITHOUT template literals inside
   const browserlessCode = `
     module.exports = async ({ page }) => {
       try {
-        // Navigate to form
+        const data = ${JSON.stringify(payload)};
+        
         await page.goto('https://www.posusa.com/compare/pos/', { 
           waitUntil: 'networkidle2', 
           timeout: 30000 
         });
-        console.log('Page loaded');
         
-        // STEP 1: INDUSTRY SELECTION
+        // STEP 1: INDUSTRY
         await page.waitForSelector('div:has-text("What industry are you in?")', { timeout: 10000 });
         
-        if ('${payload.industry}'.toLowerCase().includes('food') || '${payload.industry}'.toLowerCase().includes('drink')) {
+        if (data.industry.toLowerCase().includes('food') || data.industry.toLowerCase().includes('drink')) {
           await page.click('div:has-text("Food & Drink")');
-        } else if ('${payload.industry}'.toLowerCase().includes('retail')) {
+        } else if (data.industry.toLowerCase().includes('retail')) {
           await page.click('div:has-text("Retail")');
         } else {
           await page.click('div:has-text("Other")');
@@ -57,144 +57,120 @@ app.post('/webhook', async (req, res) => {
         // STEP 2: COMPANY TYPE
         await page.waitForSelector('label', { timeout: 10000 });
         
-        // Handle Food & Drink types
-        if ('${payload.industry}'.toLowerCase().includes('food') || '${payload.industry}'.toLowerCase().includes('drink')) {
-          if ('${payload.company_type}'.includes('Quick Service')) {
+        if (data.industry.toLowerCase().includes('food')) {
+          if (data.company_type.includes('Quick')) {
             await page.click('label:has-text("Restaurant - Quick Service")');
-          } else if ('${payload.company_type}'.includes('Full')) {
+          } else if (data.company_type.includes('Full')) {
             await page.click('label:has-text("Restaurant - Full service")');
-          } else if ('${payload.company_type}'.includes('Bar') || '${payload.company_type}'.includes('Nightclub')) {
+          } else if (data.company_type.includes('Bar') || data.company_type.includes('Nightclub')) {
             await page.click('label:has-text("Bar / Nightclub")');
-          } else if ('${payload.company_type}'.includes('Food Truck')) {
+          } else if (data.company_type.includes('Food Truck')) {
             await page.click('label:has-text("Food Truck")');
           } else {
             await page.click('label:has-text("Other")');
           }
         } else {
-          // For Retail and Other, just click Other for now
-          await page.click('label:has-text("Other")');
+          const otherLabels = await page.$$('label:has-text("Other")');
+          if (otherLabels.length > 0) {
+            await otherLabels[0].click();
+          }
         }
         
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 3: TERMINALS
-        await page.waitForSelector('label:has-text("terminal")', { timeout: 10000 });
-        
-        if ('${payload.terminals}' === '1') {
-          await page.click('label:has-text("1"):not(:has-text("-"))');
-        } else if ('${payload.terminals}' === '2') {
-          await page.click('label:has-text("2"):not(:has-text("-"))');
-        } else if ('${payload.terminals}'.includes('3')) {
+        // Continue with remaining steps...
+        // TERMINALS
+        await page.waitForSelector('div:has-text("How many terminals")', { timeout: 10000 });
+        if (data.terminals === '1') {
+          await page.click('label:has-text("1")');
+        } else if (data.terminals === '2') {
+          await page.click('label:has-text("2")');
+        } else {
           await page.click('label:has-text("3-5")');
-        } else {
-          await page.click('label:has-text("Over 5")');
         }
-        
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 4: REVENUE
-        await page.waitForSelector('label:has-text("$")', { timeout: 10000 });
-        
-        if ('${payload.monthly_revenue}'.includes('Less than')) {
-          await page.click('label:has-text("Less than $20,000")');
-        } else if ('${payload.monthly_revenue}'.includes('20,000 - $40,000')) {
-          await page.click('label:has-text("$20,000 - $40,000")');
-        } else if ('${payload.monthly_revenue}'.includes('40,000 - $80,000')) {
-          await page.click('label:has-text("$40,000 - $80,000")');
-        } else if ('${payload.monthly_revenue}'.includes('80,000 - $120,000')) {
-          await page.click('label:has-text("$80,000 - $120,000")');
-        } else if ('${payload.monthly_revenue}'.includes('More than')) {
-          await page.click('label:has-text("More than $120,000")');
-        } else {
-          await page.click('label:has-text("Unknown / Not sure")');
-        }
-        
+        // REVENUE
+        await page.waitForSelector('div:has-text("monthly revenue")', { timeout: 10000 });
+        await page.click('label:has-text("Less than $20,000")');
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 5: TIMELINE (ALWAYS ASAP)
+        // TIMELINE - ASAP
         await page.waitForSelector('label:has-text("ASAP")', { timeout: 10000 });
         await page.click('label:has-text("ASAP")');
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 6: CREDIT CARD (ALWAYS YES)
+        // CREDIT CARD - YES
         await page.waitForSelector('label:has-text("Yes")', { timeout: 10000 });
-        await page.click('label:has-text("Yes")');
+        const yesLabels = await page.$$('label:has-text("Yes")');
+        if (yesLabels.length > 0) {
+          await yesLabels[0].click();
+        }
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 7: DEMO
-        await page.waitForSelector('label:has-text("Maybe")', { timeout: 10000 });
-        
-        if ('${payload.demo}' === 'Yes') {
-          await page.click('label:has-text("Yes")');
-        } else if ('${payload.demo}' === 'No') {
+        // DEMO
+        await page.waitForSelector('div:has-text("free demo")', { timeout: 10000 });
+        if (data.demo === 'No') {
           await page.click('label:has-text("No")');
         } else {
           await page.click('label:has-text("Maybe")');
         }
-        
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 8: ZIP CODE
-        await page.waitForSelector('input[placeholder*="90210"]', { timeout: 10000 });
-        await page.type('input[placeholder*="90210"]', '${payload.zip}');
+        // ZIP
+        await page.waitForSelector('input[type="text"]', { timeout: 10000 });
+        await page.type('input[type="text"]', data.zip);
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 9: EMAIL
-        await page.waitForSelector('input[placeholder*="email"]', { timeout: 10000 });
-        await page.type('input[placeholder*="email" i]', '${payload.email}');
+        // EMAIL
+        await page.waitForSelector('input[type="email"]', { timeout: 10000 });
+        await page.type('input[type="email"]', data.email);
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 10: NAME & COMPANY
-        await page.waitForSelector('input[placeholder*="First Last"]', { timeout: 10000 });
-        await page.type('input[placeholder*="First Last"]', '${payload.name}');
-        await page.type('input[placeholder*="company" i]', '${payload.company}');
+        // NAME & COMPANY
+        const textInputs = await page.$$('input[type="text"]');
+        if (textInputs[0]) await textInputs[0].type(data.name);
+        if (textInputs[1]) await textInputs[1].type(data.company);
         await page.click('button:has-text("Continue")');
         await page.waitForTimeout(2000);
         
-        // STEP 11: PHONE
-        await page.waitForSelector('input[placeholder*="phone" i]', { timeout: 10000 });
-        await page.type('input[placeholder*="phone" i]', '${payload.phone}');
-        
-        // FINAL SUBMIT
+        // PHONE
+        await page.waitForSelector('input[type="tel"]', { timeout: 10000 });
+        await page.type('input[type="tel"]', data.phone);
         await page.click('button:has-text("Compare Quotes")');
-        await page.waitForTimeout(5000);
         
-        // Take screenshot
-        const screenshot = await page.screenshot({ encoding: 'base64' });
+        await page.waitForTimeout(5000);
         
         return { 
           success: true, 
-          email: '${payload.email}',
-          screenshot: screenshot
+          email: data.email,
+          company: data.company
         };
         
       } catch (error) {
-        console.error('Browser automation error:', error);
-        const errorScreenshot = await page.screenshot({ encoding: 'base64' });
         return { 
           success: false, 
-          error: error.message,
-          screenshot: errorScreenshot
+          error: error.message
         };
       }
     };
   `;
   
   try {
-    // Call Browserless API
+    console.log('Calling Browserless...');
+    
     const response = await axios.post(
       'https://chrome.browserless.io/function',
       { 
-        code: browserlessCode,
-        context: {}
+        code: browserlessCode
       },
       {
         headers: {
@@ -221,7 +197,6 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Health check endpoint
 app.get('/', (req, res) => {
   res.json({ status: 'Bot is running!', timestamp: new Date() });
 });
