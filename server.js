@@ -1,17 +1,16 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const puppeteer = require('puppeteer-core');
-const chromium = require('@sparticuz/chromium');
+const axios = require('axios');
 
 const app = express();
 app.use(bodyParser.json());
 
 app.post('/webhook', async (req, res) => {
   console.log('WEBHOOK HIT');
-
+  
   const raw = req.body;
   const f = raw.__submission?.user_inputs || raw;
-
+  
   const payload = {
     industry: f.business_type || 'Other',
     company_type: f.retail_type || f.restaurant_type || f.other_type || 'Other',
@@ -26,169 +25,207 @@ app.post('/webhook', async (req, res) => {
     company: f.company_name,
     phone: f.phone
   };
-
+  
   console.log('MAPPED LEAD:', payload);
-
-  let browser;
+  
+  // Browserless function code
+  const browserlessCode = `
+    module.exports = async ({ page }) => {
+      try {
+        // Navigate to form
+        await page.goto('https://www.posusa.com/compare/pos/', { 
+          waitUntil: 'networkidle2', 
+          timeout: 30000 
+        });
+        console.log('Page loaded');
+        
+        // STEP 1: INDUSTRY SELECTION
+        await page.waitForSelector('div:has-text("What industry are you in?")', { timeout: 10000 });
+        
+        if ('${payload.industry}'.toLowerCase().includes('food') || '${payload.industry}'.toLowerCase().includes('drink')) {
+          await page.click('div:has-text("Food & Drink")');
+        } else if ('${payload.industry}'.toLowerCase().includes('retail')) {
+          await page.click('div:has-text("Retail")');
+        } else {
+          await page.click('div:has-text("Other")');
+        }
+        
+        await page.waitForTimeout(500);
+        await page.click('button:has-text("Compare Quotes")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 2: COMPANY TYPE
+        await page.waitForSelector('label', { timeout: 10000 });
+        
+        // Handle Food & Drink types
+        if ('${payload.industry}'.toLowerCase().includes('food') || '${payload.industry}'.toLowerCase().includes('drink')) {
+          if ('${payload.company_type}'.includes('Quick Service')) {
+            await page.click('label:has-text("Restaurant - Quick Service")');
+          } else if ('${payload.company_type}'.includes('Full')) {
+            await page.click('label:has-text("Restaurant - Full service")');
+          } else if ('${payload.company_type}'.includes('Bar') || '${payload.company_type}'.includes('Nightclub')) {
+            await page.click('label:has-text("Bar / Nightclub")');
+          } else if ('${payload.company_type}'.includes('Food Truck')) {
+            await page.click('label:has-text("Food Truck")');
+          } else {
+            await page.click('label:has-text("Other")');
+          }
+        } else {
+          // For Retail and Other, just click Other for now
+          await page.click('label:has-text("Other")');
+        }
+        
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 3: TERMINALS
+        await page.waitForSelector('label:has-text("terminal")', { timeout: 10000 });
+        
+        if ('${payload.terminals}' === '1') {
+          await page.click('label:has-text("1"):not(:has-text("-"))');
+        } else if ('${payload.terminals}' === '2') {
+          await page.click('label:has-text("2"):not(:has-text("-"))');
+        } else if ('${payload.terminals}'.includes('3')) {
+          await page.click('label:has-text("3-5")');
+        } else {
+          await page.click('label:has-text("Over 5")');
+        }
+        
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 4: REVENUE
+        await page.waitForSelector('label:has-text("$")', { timeout: 10000 });
+        
+        if ('${payload.monthly_revenue}'.includes('Less than')) {
+          await page.click('label:has-text("Less than $20,000")');
+        } else if ('${payload.monthly_revenue}'.includes('20,000 - $40,000')) {
+          await page.click('label:has-text("$20,000 - $40,000")');
+        } else if ('${payload.monthly_revenue}'.includes('40,000 - $80,000')) {
+          await page.click('label:has-text("$40,000 - $80,000")');
+        } else if ('${payload.monthly_revenue}'.includes('80,000 - $120,000')) {
+          await page.click('label:has-text("$80,000 - $120,000")');
+        } else if ('${payload.monthly_revenue}'.includes('More than')) {
+          await page.click('label:has-text("More than $120,000")');
+        } else {
+          await page.click('label:has-text("Unknown / Not sure")');
+        }
+        
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 5: TIMELINE (ALWAYS ASAP)
+        await page.waitForSelector('label:has-text("ASAP")', { timeout: 10000 });
+        await page.click('label:has-text("ASAP")');
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 6: CREDIT CARD (ALWAYS YES)
+        await page.waitForSelector('label:has-text("Yes")', { timeout: 10000 });
+        await page.click('label:has-text("Yes")');
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 7: DEMO
+        await page.waitForSelector('label:has-text("Maybe")', { timeout: 10000 });
+        
+        if ('${payload.demo}' === 'Yes') {
+          await page.click('label:has-text("Yes")');
+        } else if ('${payload.demo}' === 'No') {
+          await page.click('label:has-text("No")');
+        } else {
+          await page.click('label:has-text("Maybe")');
+        }
+        
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 8: ZIP CODE
+        await page.waitForSelector('input[placeholder*="90210"]', { timeout: 10000 });
+        await page.type('input[placeholder*="90210"]', '${payload.zip}');
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 9: EMAIL
+        await page.waitForSelector('input[placeholder*="email"]', { timeout: 10000 });
+        await page.type('input[placeholder*="email" i]', '${payload.email}');
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 10: NAME & COMPANY
+        await page.waitForSelector('input[placeholder*="First Last"]', { timeout: 10000 });
+        await page.type('input[placeholder*="First Last"]', '${payload.name}');
+        await page.type('input[placeholder*="company" i]', '${payload.company}');
+        await page.click('button:has-text("Continue")');
+        await page.waitForTimeout(2000);
+        
+        // STEP 11: PHONE
+        await page.waitForSelector('input[placeholder*="phone" i]', { timeout: 10000 });
+        await page.type('input[placeholder*="phone" i]', '${payload.phone}');
+        
+        // FINAL SUBMIT
+        await page.click('button:has-text("Compare Quotes")');
+        await page.waitForTimeout(5000);
+        
+        // Take screenshot
+        const screenshot = await page.screenshot({ encoding: 'base64' });
+        
+        return { 
+          success: true, 
+          email: '${payload.email}',
+          screenshot: screenshot
+        };
+        
+      } catch (error) {
+        console.error('Browser automation error:', error);
+        const errorScreenshot = await page.screenshot({ encoding: 'base64' });
+        return { 
+          success: false, 
+          error: error.message,
+          screenshot: errorScreenshot
+        };
+      }
+    };
+  `;
+  
   try {
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
+    // Call Browserless API
+    const response = await axios.post(
+      'https://chrome.browserless.io/function',
+      { 
+        code: browserlessCode,
+        context: {}
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.BROWSERLESS_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 60000
+      }
+    );
+    
+    console.log('BROWSERLESS SUCCESS!', response.data);
+    res.json({ 
+      success: true, 
+      message: 'Lead submitted successfully!',
+      result: response.data 
     });
-
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-
-    await page.goto('https://www.posusa.com/compare/pos/', { 
-      waitUntil: 'networkidle2', 
-      timeout: 60000 
+    
+  } catch (error) {
+    console.error('ERROR:', error.response?.data || error.message);
+    res.status(500).json({ 
+      success: false,
+      error: error.response?.data || error.message 
     });
-    console.log('PAGE LOADED');
-
-    // === 1. INDUSTRY ===
-    const ind = payload.industry.toLowerCase();
-    const indXPath = ind.includes('retail') ? '//div[contains(text(),"Retail")]'
-                   : ind.includes('food') || ind.includes('drink') ? '//div[contains(text(),"Food & Drink")]'
-                   : '//div[contains(text(),"Other")]';
-    await page.waitForXPath(indXPath, { timeout: 15000 });
-    await (await page.$x(indXPath))[0].click();
-    await page.click('//button[contains(text(),"Compare Quotes")]');
-    await page.waitForTimeout(3000);
-    console.log('INDUSTRY DONE');
-
-    // === 2. COMPANY TYPE ===
-    let compXPath = '//label[contains(text(),"Other")]';
-    if (ind.includes('food') || ind.includes('drink')) {
-      await page.waitForXPath('//div[contains(text(),"Which best describes your company?")]');
-      compXPath = payload.company_type.includes('Quick Service') ? '//label[contains(text(),"Restaurant - Quick Service")]'
-                : payload.company_type.includes('Full service') ? '//label[contains(text(),"Restaurant - Full service")]'
-                : payload.company_type.includes('Bar') || payload.company_type.includes('Nightclub') ? '//label[contains(text(),"Bar/Nightclub")]'
-                : payload.company_type.includes('Food Truck') ? '//label[contains(text(),"Food Truck")]'
-                : '//label[contains(text(),"Other")]';
-    } else if (ind.includes('retail')) {
-      await page.waitForXPath('//div[contains(text(),"Which best describes your company?")]');
-      compXPath = payload.company_type.includes('Grocery') ? '//label[contains(text(),"Grocery Store")]'
-                : payload.company_type.includes('Apparel') || payload.company_type.includes('Footwear') ? '//label[contains(text(),"Apparel / Footwear Store")]'
-                : payload.company_type.includes('Merchandise') || payload.company_type.includes('Sports') ? '//label[contains(text(),"Merchandise / Sports Goods Store")]'
-                : payload.company_type.includes('Salon') || payload.company_type.includes('Barber') ? '//label[contains(text(),"Salon / Barber")]'
-                : payload.company_type.includes('Liquor') ? '//label[contains(text(),"Liquor Store")]'
-                : payload.company_type.includes('Tobacco') || payload.company_type.includes('Vape') ? '//label[contains(text(),"Tobacco / Vape Store")]'
-                : '//label[contains(text(),"Other")]';
-    } else {
-      await page.waitForXPath('//div[contains(text(),"Which best describes your company?")]');
-      compXPath = payload.company_type.includes('Restaurant') || payload.company_type.includes('Bar') || payload.company_type.includes('Club')
-                ? '//label[contains(text(),"Restaurant or Nightlife")]'
-                : payload.company_type.includes('Service') || payload.company_type.includes('Salon') || payload.company_type.includes('Barber') || payload.company_type.includes('Automotive')
-                ? '//label[contains(text(),"Service Business")]'
-                : payload.company_type.includes('Specialty') || payload.company_type.includes('Tobacco') || payload.company_type.includes('Vape') || payload.company_type.includes('Boutique')
-                ? '//label[contains(text(),"Specialty Stores")]'
-                : payload.company_type.includes('Grocery') || payload.company_type.includes('Essentials')
-                ? '//label[contains(text(),"Grocery & Essentials")]'
-                : payload.company_type.includes('Hotel') || payload.company_type.includes('Events') || payload.company_type.includes('Venues')
-                ? '//label[contains(text(),"Hotel, Events, or Venues")]'
-                : '//label[contains(text(),"Other")]';
-    }
-    await page.waitForXPath(compXPath, { timeout: 15000 });
-    await (await page.$x(compXPath))[0].click();
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('COMPANY TYPE DONE');
-
-    // === 3. TERMINALS ===
-    await page.waitForXPath('//div[contains(text(),"How many terminals do you require?")]');
-    const termXPath = payload.terminals === '1' ? '//label[contains(text(),"1") and not(contains(text(),"-"))]'
-                    : payload.terminals === '2' ? '//label[contains(text(),"2") and not(contains(text(),"-"))]'
-                    : payload.terminals === '3-5' ? '//label[contains(text(),"3-5")]'
-                    : '//label[contains(text(),"Over 5")]';
-    await page.waitForXPath(termXPath, { timeout: 15000 });
-    await (await page.$x(termXPath))[0].click();
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('TERMINALS DONE');
-
-    // === 4. REVENUE ===
-    await page.waitForXPath('//div[contains(text(),"What is your average monthly revenue?")]');
-    const revXPath = payload.monthly_revenue.includes('Less than $20,000') ? '//label[contains(text(),"Less than $20,000")]'
-                   : payload.monthly_revenue.includes('$20,000 - $40,000') ? '//label[contains(text(),"$20,000 - $40,000")]'
-                   : payload.monthly_revenue.includes('$40,000 - $80,000') ? '//label[contains(text(),"$40,000 - $80,000")]'
-                   : payload.monthly_revenue.includes('$80,000 - $120,000') ? '//label[contains(text(),"$80,000 - $120,000")]'
-                   : payload.monthly_revenue.includes('More than $120,000') ? '//label[contains(text(),"More than $120,000")]'
-                   : '//label[contains(text(),"Unknown / Not sure")]';
-    await page.waitForXPath(revXPath, { timeout: 15000 });
-    await (await page.$x(revXPath))[0].click();
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('REVENUE DONE');
-
-    // === 5. TIMELINE ===
-    await page.waitForXPath('//div[contains(text(),"When do you need your new POS system?")]');
-    const timelineXPath = payload.timeline.includes('1-3 Months') ? '//label[contains(text(),"1-3 Months")]'
-                        : payload.timeline.includes('4-6 Months') ? '//label[contains(text(),"4-6 Months")]'
-                        : '//label[contains(text(),"ASAP")]';
-    await page.waitForXPath(timelineXPath, { timeout: 15000 });
-    await (await page.$x(timelineXPath))[0].click();
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('TIMELINE DONE');
-
-    // === 6. CREDIT CARD ===
-    await page.waitForXPath('//div[contains(text(),"Are you also interested in credit card processing?")]');
-    await page.click(payload.credit_card === 'Yes' ? '//label[contains(text(),"Yes")]' : '//label[contains(text(),"No")]');
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('CREDIT CARD DONE');
-
-    // === 7. DEMO ===
-    await page.waitForXPath('//div[contains(text(),"Would you be interested in a free demo?")]');
-    const demoXPath = payload.demo.includes('Maybe') ? '//label[contains(text(),"Maybe")]'
-                    : payload.demo.includes('No') ? '//label[contains(text(),"No")]'
-                    : '//label[contains(text(),"Yes")]';
-    await page.waitForXPath(demoXPath, { timeout: 15000 });
-    await (await page.$x(demoXPath))[0].click();
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('DEMO DONE');
-
-    // === 8. ZIP ===
-    await page.waitForXPath('//div[contains(text(),"What\'s your ZIP code?")]');
-    await page.type('input[placeholder*="90210"]', payload.zip);
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('ZIP DONE');
-
-    // === 9. EMAIL ===
-    await page.waitForXPath('//div[contains(text(),"Almost there")]');
-    await page.type('input[placeholder*="Your email address"]', payload.email);
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('EMAIL DONE');
-
-    // === 10. NAME + COMPANY ===
-    await page.waitForXPath('//div[contains(text(),"Only two steps left")]');
-    await page.type('input[placeholder*="First Last"]', payload.name);
-    await page.type('input[placeholder*="Your company name"]', payload.company);
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(3000);
-    console.log('NAME/COMPANY DONE');
-
-    // === 11. PHONE ===
-    await page.waitForXPath('//div[contains(text(),"This is the last page of questions")]');
-    await page.type('input[placeholder*="Your phone number"]', payload.phone);
-    await page.click('//button[contains(text(),"Compare Quotes")]');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {});
-    await page.screenshot({ path: 'debug-submitted.png' });
-    console.log('SCREENSHOT SAVED');
-
-    await browser.close();
-    res.json({ success: true, message: 'LEAD SUBMITTED!' });
-  } catch (err) {
-    console.error('ERROR:', err.message);
-    if (browser) await browser.close().catch(() => {});
-    res.status(500).json({ error: err.message });
   }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log('BOT LIVE'));
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ status: 'Bot is running!', timestamp: new Date() });
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`BOT LIVE on port ${process.env.PORT || 3000}`);
+});
