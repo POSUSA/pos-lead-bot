@@ -186,3 +186,13 @@ try {
 });
 
 app.listen(process.env.PORT || 3000, () => console.log('BOT LIVE'));
+
+// ... your existing code ...
+
+const browser = await puppeteer.launch({
+  headless: 'new',
+  executablePath: process.env.PUPPETEER_EXEC_PATH || '/tmp/chrome/chrome',
+  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
+});
+
+// ... rest of bot
