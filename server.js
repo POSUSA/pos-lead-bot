@@ -29,9 +29,10 @@ app.post('/webhook', async (req, res) => {
   console.log('MAPPED LEAD:', payload);
 
   try {
-    // === LAUNCH BROWSER (FIXED: IN ASYNC FUNCTION) ===
+    // === LAUNCH BROWSER WITH INSTALLED CHROME ===
     const browser = await puppeteer.launch({
       headless: 'new',
+      executablePath: process.env.PUPPETEER_EXEC_PATH || '/tmp/chrome/chrome',
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu']
     });
 
@@ -141,35 +142,4 @@ app.post('/webhook', async (req, res) => {
     // === 8. ZIP ===
     await page.waitForXPath('//div[contains(text(),"What\'s your ZIP code?")]');
     await page.type('input[placeholder*="90210"]', payload.zip);
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
-
-    // === 9. EMAIL ===
-    await page.waitForXPath('//div[contains(text(),"Almost there")]');
-    await page.type('input[placeholder*="Your email address"]', payload.email);
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
-
-    // === 10. NAME + COMPANY ===
-    await page.waitForXPath('//div[contains(text(),"Only two steps left")]');
-    await page.type('input[placeholder*="First Last"]', payload.name);
-    await page.type('input[placeholder*="Your company name"]', payload.company);
-    await page.click('//button[contains(text(),"Continue")]');
-    await page.waitForTimeout(2000);
-
-    // === 11. PHONE ===
-    await page.waitForXPath('//div[contains(text(),"This is the last page of questions")]');
-    await page.type('input[placeholder*="Your phone number"]', payload.phone);
-    await page.click('//button[contains(text(),"Compare Quotes")]');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
-    await page.screenshot({ path: 'debug-submitted.png' });
-
-    await browser.close();
-    res.json({ success: true, message: 'LEAD SUBMITTED!' });
-  } catch (err) {
-    console.error('ERROR:', err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.listen(process.env.PORT || 3000, () => console.log('BOT LIVE'));
+   
